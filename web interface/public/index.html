@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pico ↔ Browser Chat</title>
+  <style>
+    /* Full-page flex centering */
+    body {
+      margin: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: #f0f2f5;
+      font-family: sans-serif;
+    }
+
+    /* Card container */
+    #container {
+      width: 400px;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+    }
+
+    /* Slider section */
+    .slider-container {
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+    .slider-container input[type="range"] {
+      width: 100%;
+      margin-top: 0.5rem;
+    }
+    .slider-container label {
+      font-size: 0.9rem;
+      color: #333;
+    }
+
+    /* Log window */
+    #log {
+      flex: 1;
+      margin-bottom: 1rem;
+      padding: 0.5rem;
+      background: #fafafa;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      overflow-y: auto;
+      height: 200px;
+      white-space: pre-wrap;
+    }
+
+    /* Controls row */
+    #controls {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    /* Text input */
+    input[type="text"] {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+
+    /* Buttons */
+    button {
+      padding: 0.5rem 1rem;
+      border: none;
+      background-color: #4caf50;
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    button:active {
+      background-color: #3e8e41;
+    }
+  </style>
+</head>
+<body>
+<div id="container">
+  <h1>Pico ↔ Browser Chat</h1>
+
+  <!-- ── New: Frequency Slider ── -->
+  <div class="slider-container">
+    <label for="freqSlider">
+      Frequency: <span id="freqLabel">100.0 MHz</span>
+    </label>
+    <input
+            id="freqSlider"
+            type="range"
+            min="87.5"
+            max="108.0"
+            step="0.1"
+            value="100.0"
+    />
+  </div>
+
+  <div class="cipher-container" style="margin-bottom:1rem; text-align:center;">
+    <label for="cipherSelect">Cipher:</label>
+    <select id="cipherSelect">
+      <option value="none">None</option>
+      <option value="caesar">Caesar</option>
+      <option value="four-square">Four-Square</option>
+      <option value="m94">M-94</option>
+      <option value="vigenere">Vigenère</option>
+    </select>
+    <label for="cipherKey"></label><input id="cipherKey" type="text" placeholder="key" style="width:100px; margin-left:0.5rem;">
+  </div>
+
+  <pre id="log"></pre>
+
+  <div id="controls">
+    <label for="msg"></label><input id="msg" type="text" placeholder="Type message…" autofocus>
+    <button id="send">Send</button>
+    <button id="clear">Clear</button>
+  </div>
+</div>
+
+<script>
+  const ws = new WebSocket(`ws://${location.host}`);
+  const log = document.getElementById('log');
+  const slider = document.getElementById('freqSlider');
+  const freqLabel = document.getElementById('freqLabel');
+  const cipherSelect = document.getElementById('cipherSelect');
+  const cipherKey    = document.getElementById('cipherKey');
+  const sendBtn = document.getElementById('send');
+  const clearBtn = document.getElementById('clear');
+  const msgInput = document.getElementById('msg');
+
+  ws.onopen    = () => log.textContent += '🟢 WS open\n';
+  ws.onmessage = e  => log.textContent += `📥 ${e.data}\n`;
+  ws.onclose   = () => log.textContent += '⚪ WS closed\n';
+
+  freqLabel.textContent = `${parseFloat(slider.value).toFixed(1)} MHz`;
+
+  slider.addEventListener('input', () => {
+    const v = parseFloat(slider.value).toFixed(1);
+    freqLabel.textContent = `${v} MHz`;
+  });
+  function updateKeyVisibility() {
+    const method = cipherSelect.value;
+    // only Caesar, Vigenère, Four-Square, and M-94 need a key
+    if (method === 'caesar' ||
+            method === 'vigenere' ||
+            method === 'four-square' ||
+            method === 'm94') {
+      cipherKey.style.display = 'inline-block';
+      cipherKey.placeholder = method === 'caesar'
+              ? 'shift (e.g. 3)'
+              : method === 'four-square'
+                      ? 'key1,key2'
+                      : 'keyword';
+    } else {
+      cipherKey.style.display = 'none';
+      cipherKey.value = '';
+    }
+  }
+
+  updateKeyVisibility();
+  cipherSelect.addEventListener('change', updateKeyVisibility);
+
+  sendBtn.onclick = () => {
+    const f = parseFloat(slider.value).toFixed(1);
+    const c = cipherSelect.value;
+    const k = cipherKey.value.trim();
+    const m = msgInput.value.trim();
+
+    if (ws.readyState !== WebSocket.OPEN) return;
+
+    // 1) Set frequency as before
+    ws.send(`FREQ=${f}`);
+    log.textContent += `📡 set FREQ=${f}\n`;
+
+    // 2) Send the cipher command
+    //    Format: CIPHER=method[:param]
+    let cipherCmd = `CIPHER=${c}`;
+    if (k) cipherCmd += `:${k}`;
+    ws.send(cipherCmd);
+    log.textContent += `🔐 ${cipherCmd}\n`;
+
+    // 3) Send your plaintext message
+    if (m) {
+      ws.send(m);
+      log.textContent += `📤 ${m}\n`;
+    }
+
+    msgInput.value = '';
+    msgInput.focus();
+  };
+
+  clearBtn.onclick = () => {
+    log.textContent = '';
+    msgInput.focus();
+  };
+  msgInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') sendBtn.click();
+  });
+</script>
+</body>
+</html>
+

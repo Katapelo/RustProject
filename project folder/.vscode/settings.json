@@ -1,0 +1,14 @@
+{
+    "rust-analyzer.check.allTargets": false,
+    "rust-analyzer.cargo.target": "thumbv8m.main-none-eabihf",
+    "cSpell.words": [
+        "disp",
+        "DOUT",
+        "mipidsi",
+        "MOSI",
+        "Rosc",
+        "sdmmc",
+        "serde",
+        "wiznet"
+    ]
+}
